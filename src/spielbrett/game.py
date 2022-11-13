@@ -1,34 +1,32 @@
-import functools
+from typing import Any, Dict
 
-from typing import Callable, Concatenate, ParamSpec, TypeVar
-
-
-P = ParamSpec('P')
-R = TypeVar('R')
+from spielbrett._instance_host import get_instance_host_api
+from spielbrett.observation import _observations
+from spielbrett.typing import PlayerIndex
 
 
 class Game:
-    def _on_action(self):
-        pass
+    """Base class for Project Spielbrett games."""
 
+    def __init__(self) -> None:
+        self._max_player_index = -1
 
-PlayerIndex = int
+    def _add_player(self) -> PlayerIndex:
+        self._max_player_index += 1
+        return self._max_player_index
 
+    def _get_all_observations(self, player_index: PlayerIndex) -> Dict[str, Any]:
+        class_name = self.__class__.__name__
+        observations = {
+            observation_name: self.__getattribute__(observation_name)(player_index)
+            for observation_name in _observations[class_name]
+        }
+        return observations
 
-def action(
-    fn: Callable[Concatenate[Game, PlayerIndex, P], R]
-) -> Callable[Concatenate[Game, PlayerIndex, P], R]:
-    @functools.wraps(fn)
-    def decorated_fn(game: Game, player_index: PlayerIndex, *args: P.args, **kwargs: P.kwargs) -> R:
-        res = fn(game, player_index, *args, **kwargs)
-        game._on_action()
-        return res
+    def _on_action(self) -> None:
+        for player_index in range(self._max_player_index + 1):
+            observation = self._get_all_observations(player_index)
 
-    return decorated_fn
-
-
-def observation(
-    fn: Callable[Concatenate[Game, PlayerIndex, P], R]
-) -> Callable[Concatenate[Game, PlayerIndex, P], R]:
-    # TODO: Register observation in a class it was declared in
-    return fn
+            iha = get_instance_host_api()
+            if iha is not None:
+                iha.update_observation(player_index, observation)
